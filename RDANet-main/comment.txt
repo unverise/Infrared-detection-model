@@ -1,0 +1,1 @@
+ NUDT-SIRST 是合成的，IoU 容易到 90 以上；IRSTD-1k 和 NUAA-SIRST 是真实图像，紧凑模型更容易过拟合合成纹理。

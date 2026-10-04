@@ -1,0 +1,27 @@
+time:--24/09/2026 21:05:17
+dataset_name:--NUAA-SIRST
+data_root:--./datasets
+save_root:--./runs/fast-screen-2026-09-24-20-03-12
+batch_size:--4
+epochs:--300
+lr:--0.001
+weight_decay:--1e-05
+eta_min:--1e-05
+base_size:--512
+crop_size:--512
+multi_gpus:--False
+checkpoint_path:--None
+optimizer:--AdamW
+layers:--5
+factor:--2
+block_factor:--1
+mode:--train
+weight_path:--None
+screen_datasets:--['IRSTD-1k', 'NUAA-SIRST']
+subset_size:--150
+subset_seed:--42
+eval_interval:--5
+num_workers:--4
+screen_epochs:--300
+screen_subset_size:--150
+_scheduler_tmax:--600
