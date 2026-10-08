@@ -16,15 +16,20 @@ def parse_args():
 
     # data and pre-process
     parser.add_argument('--dataset', type=str, default='NUDT-SIRST',
-                        help='dataset name:  NUDT-SIRST, NUAA-SIRST, NUST-SIRST')
+                        help='dataset name: NUDT-SIRST, NUAA-SIRST, IRSTD-1k, SIRST-V2, NUST-SIRST')
     parser.add_argument('--mode', type=str, default='TXT', help='mode name:  TXT, Ratio')
     parser.add_argument('--test_size', type=float, default='0.5', help='when mode==Ratio')
-    parser.add_argument('--root', type=str, default='dataset/')
+    parser.add_argument('--root', type=str, default='../RDANet-main/datasets',
+                        help='dataset root that contains <dataset>/images|masks|*.txt')
     parser.add_argument('--suffix', type=str, default='.png')
     parser.add_argument('--split_method', type=str, default='50_50',
-                        help='50_50, 10000_100(for NUST-SIRST)')
-    parser.add_argument('--workers', type=int, default=4,
-                        metavar='N', help='dataloader threads')
+                        help='50_50, 10000_100(for NUST-SIRST); ignored when trainval.txt exists')
+    parser.add_argument('--subset_size', type=int, default=0,
+                        help='if >0, randomly keep this many train/test images for smoke tests')
+    parser.add_argument('--subset_seed', type=int, default=42,
+                        help='random seed used by --subset_size')
+    parser.add_argument('--workers', type=int, default=0,
+                        metavar='N', help='dataloader threads (0 is safer on Windows)')
     parser.add_argument('--in_channels', type=int, default=3,
                         help='in_channel=3 for pre-process')
     parser.add_argument('--base_size', type=int, default=256,

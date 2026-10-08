@@ -29,7 +29,9 @@ class Trainer(object):
         # Read image index from TXT
         if args.mode == 'TXT':
             dataset_dir = args.root + '/' + args.dataset
-            train_img_ids, val_img_ids, test_txt = load_dataset(args.root, args.dataset, args.split_method)
+            train_img_ids, val_img_ids, test_txt = load_dataset(
+                args.root, args.dataset, args.split_method,
+                subset_size=args.subset_size, subset_seed=args.subset_seed)
 
         # Preprocess and load data
         input_transform = transforms.Compose([
