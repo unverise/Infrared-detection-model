@@ -296,14 +296,17 @@ def make_dir(deep_supervision, dataset, model):
     os.makedirs('result/%s' % save_dir, exist_ok=True)
     return save_dir
 
-def total_visulization_generation(dataset_dir, mode, test_txt, suffix, target_image_path, target_dir):
+def total_visulization_generation(dataset_dir, mode, test_txt, suffix, target_image_path, target_dir, img_ids=None):
     source_image_path = dataset_dir + '/images'
 
-    txt_path = test_txt
-    ids = []
-    with open(txt_path, 'r') as f:
-        ids += [line.strip() for line in f.readlines()]
+    if img_ids is not None:
+        ids = list(img_ids)
+    else:
+        ids = []
+        with open(test_txt, 'r') as f:
+            ids += [line.strip() for line in f.readlines() if line.strip()]
 
+    resize_filter = getattr(Image, 'Resampling', Image).LANCZOS if hasattr(Image, 'LANCZOS') else Image.BICUBIC
     for i in range(len(ids)):
         source_image = source_image_path + '/' + ids[i] + suffix
         target_image = target_image_path + '/' + ids[i] + suffix
@@ -311,7 +314,7 @@ def total_visulization_generation(dataset_dir, mode, test_txt, suffix, target_im
     for i in range(len(ids)):
         source_image = target_image_path + '/' + ids[i] + suffix
         img = Image.open(source_image)
-        img = img.resize((256, 256), Image.ANTIALIAS)
+        img = img.resize((256, 256), resize_filter)
         img.save(source_image)
     for m in range(len(ids)):
         plt.figure(figsize=(10, 6))
@@ -335,6 +338,8 @@ def total_visulization_generation(dataset_dir, mode, test_txt, suffix, target_im
 
 
 def make_visulization_dir(target_image_path, target_dir):
+    os.makedirs(os.path.dirname(target_image_path), exist_ok=True)
+    os.makedirs(os.path.dirname(target_dir), exist_ok=True)
     if os.path.exists(target_image_path):
         shutil.rmtree(target_image_path)  # 删除目录，包括目录下的所有文件
     os.mkdir(target_image_path)

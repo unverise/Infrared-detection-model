@@ -17,21 +17,24 @@ def parse_args():
 
     # data and pre-process
     parser.add_argument('--dataset', type=str, default='NUDT-SIRST',
-                        help='dataset name: NUDT-SIRST, NUAA-SIRST, NUST-SIRST')
+                        help='dataset name: NUDT-SIRST, NUAA-SIRST, IRSTD-1k, SIRST-V2, NUST-SIRST')
     parser.add_argument('--st_model', type=str, default='NUDT-SIRST_DNANet_31_07_2021_14_50_57_wDS',
-                        help='NUDT-SIRST_DNANet_31_07_2021_14_50_57_wDS,'
-                             'NUAA-SIRST_DNANet_28_07_2021_05_21_33_wDS')
+                        help='result folder name under ./result/, e.g. NUAA-SIRST_DNANet_xx_wDS')
     parser.add_argument('--model_dir', type=str,
                         default = 'NUDT-SIRST_DNANet_31_07_2021_14_50_57_wDS/mIoU__DNANet_NUDT-SIRST_epoch.pth.tar',
-                        help    = 'NUDT-SIRST_DNANet_31_07_2021_14_50_57_wDS/mIoU__DNANet_NUDT-SIRST_epoch.pth.tar,'
-                                  'NUAA-SIRST_DNANet_28_07_2021_05_21_33_wDS/mIoU__DNANet_NUAA-SIRST_epoch.pth.tar')
+                        help    = 'checkpoint path relative to ./result/')
     parser.add_argument('--mode', type=str, default='TXT', help='mode name:  TXT, Ratio')
     parser.add_argument('--test_size', type=float, default='0.5', help='when --mode==Ratio')
-    parser.add_argument('--root', type=str, default='dataset/')
+    parser.add_argument('--root', type=str, default='../RDANet-main/datasets',
+                        help='dataset root that contains <dataset>/images|masks|*.txt')
     parser.add_argument('--suffix', type=str, default='.png')
     parser.add_argument('--split_method', type=str, default='50_50',
-                        help='50_50, 10000_100(for NUST-SIRST)')
-    parser.add_argument('--workers', type=int, default=4,
+                        help='50_50, 10000_100(for NUST-SIRST); ignored when trainval.txt exists')
+    parser.add_argument('--subset_size', type=int, default=0,
+                        help='if >0, only evaluate this many test images')
+    parser.add_argument('--subset_seed', type=int, default=42,
+                        help='random seed used by --subset_size')
+    parser.add_argument('--workers', type=int, default=0,
                         metavar='N', help='dataloader threads')
     parser.add_argument('--in_channels', type=int, default=3,
                         help='in_channel=3 for pre-process')

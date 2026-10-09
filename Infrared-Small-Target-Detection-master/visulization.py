@@ -27,7 +27,9 @@ class Trainer(object):
         # Read image index from TXT
         if args.mode    == 'TXT':
             dataset_dir = args.root + '/' + args.dataset
-            train_img_ids, val_img_ids, test_txt=load_dataset(args.root, args.dataset,args.split_method)
+            train_img_ids, val_img_ids, test_txt = load_dataset(
+                args.root, args.dataset, args.split_method,
+                subset_size=args.subset_size, subset_seed=args.subset_seed)
 
         # Preprocess and load data
         input_transform = transforms.Compose([
@@ -70,7 +72,9 @@ class Trainer(object):
                 save_Pred_GT(pred, labels,visulization_path, val_img_ids, num, args.suffix)
                 num += 1
 
-            total_visulization_generation(dataset_dir, args.mode, test_txt, args.suffix, visulization_path, visulization_fuse_path)
+            total_visulization_generation(
+                dataset_dir, args.mode, test_txt, args.suffix,
+                visulization_path, visulization_fuse_path, img_ids=val_img_ids)
 
 
 
