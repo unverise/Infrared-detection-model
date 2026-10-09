@@ -1,0 +1,5 @@
+# Never commit GitHub tokens or AutoDL credential files
+.git-credentials
+*.token
+.env
+.env.*
