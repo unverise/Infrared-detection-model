@@ -83,6 +83,11 @@ def parse_args():
     p.add_argument("--workers", type=int, default=0)
     p.add_argument("--train_batch_size", type=int, default=4)
     p.add_argument("--test_batch_size", type=int, default=4)
+    p.add_argument(
+        "--train_aug", type=str, default="resize", choices=["resize", "full"],
+        help="resize: only resize/normalize (推荐蒸馏，避免小目标被随机裁掉); "
+             "full: DNANet 原版随机缩放裁剪增强",
+    )
 
     # scoring / pruning
     p.add_argument("--score_batches", type=int, default=50)
@@ -115,10 +120,18 @@ def build_loaders(args):
         transforms.ToTensor(),
         transforms.Normalize([.485, .456, .406], [.229, .224, .225]),
     ])
-    trainset = TrainSetLoader(
-        dataset_dir, img_id=train_ids, base_size=args.base_size,
-        crop_size=args.crop_size, transform=tfm, suffix=args.suffix,
-    )
+    # NUDT 等小目标集上，TrainSetLoader 的随机缩放+裁剪很容易裁掉目标；
+    # SoftIoU 在空标签上会把网络推向“全背景”，蒸馏表现为 test_loss≈0.996、mIoU=0。
+    if args.train_aug == "full":
+        trainset = TrainSetLoader(
+            dataset_dir, img_id=train_ids, base_size=args.base_size,
+            crop_size=args.crop_size, transform=tfm, suffix=args.suffix,
+        )
+    else:
+        trainset = TestSetLoader(
+            dataset_dir, img_id=train_ids, base_size=args.base_size,
+            crop_size=args.crop_size, transform=tfm, suffix=args.suffix,
+        )
     testset = TestSetLoader(
         dataset_dir, img_id=val_ids, base_size=args.base_size,
         crop_size=args.crop_size, transform=tfm, suffix=args.suffix,
