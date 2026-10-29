@@ -22,6 +22,7 @@ def SoftIoULoss( pred, target):
 
         return loss
 
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
