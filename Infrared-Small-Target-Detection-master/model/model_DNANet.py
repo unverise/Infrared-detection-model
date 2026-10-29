@@ -176,10 +176,12 @@ class ChannelAttention(nn.Module):
         self.max_pool = nn.AdaptiveMaxPool2d(1)
         # 用 1×1 卷积实现 MLP。作用在 1×1 特征图上时，和 nn.Linear 等价，
         # 而且不用把张量展平成 (B, C)。bias=False 是 CBAM 原文的写法。
-        # 缩减比写死为 16，没有读取上面的 ratio。
-        self.fc1   = nn.Conv2d(in_planes, in_planes // 16, 1, bias=False)
+        # 剪枝后 C 可能 < ratio（例如 C=13），C//16 会变成 0，Conv 权重变成
+        # [0, C, 1, 1] 直接报错；这里至少保留 1 维中间通道。
+        mid = max(1, in_planes // ratio)
+        self.fc1   = nn.Conv2d(in_planes, mid, 1, bias=False)
         self.relu1 = nn.ReLU()
-        self.fc2   = nn.Conv2d(in_planes // 16, in_planes, 1, bias=False)
+        self.fc2   = nn.Conv2d(mid, in_planes, 1, bias=False)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
