@@ -22,8 +22,45 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm import tqdm
 
-from data_loader import RescaleT, RandomCrop, ToTensorLab
+from data_loader import RescaleT, RandomCrop
 from model import UIUNET
+
+
+class ToTensorFloat(object):
+    """替代 ToTensorLab：始终输出 float32，避免空 mask 仍为 uint8 导致 collate 失败。"""
+
+    def __call__(self, sample):
+        imidx, image, label = sample["imidx"], sample["image"], sample["label"]
+
+        image = image.astype(np.float64)
+        label = label.astype(np.float64)
+
+        max_img = float(np.max(image)) if image.size else 0.0
+        if max_img > 1e-6:
+            image = image / max_img
+        max_lbl = float(np.max(label)) if label.size else 0.0
+        if max_lbl > 1e-6:
+            label = label / max_lbl
+
+        tmp_img = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.float32)
+        if image.shape[2] == 1:
+            ch = (image[:, :, 0] - 0.485) / 0.229
+            tmp_img[:, :, 0] = ch
+            tmp_img[:, :, 1] = ch
+            tmp_img[:, :, 2] = ch
+        else:
+            tmp_img[:, :, 0] = (image[:, :, 0] - 0.485) / 0.229
+            tmp_img[:, :, 1] = (image[:, :, 1] - 0.456) / 0.224
+            tmp_img[:, :, 2] = (image[:, :, 2] - 0.406) / 0.225
+
+        tmp_img = np.ascontiguousarray(tmp_img.transpose(2, 0, 1))
+        tmp_lbl = np.ascontiguousarray(label.transpose(2, 0, 1).astype(np.float32))
+
+        return {
+            "imidx": torch.from_numpy(np.asarray(imidx)),
+            "image": torch.from_numpy(tmp_img),
+            "label": torch.from_numpy(tmp_lbl),
+        }
 
 
 def parse_args():
@@ -117,11 +154,11 @@ def build_loaders(args, root):
     train_tf = transforms.Compose([
         RescaleT(args.rescale),
         RandomCrop(args.crop),
-        ToTensorLab(flag=0),
+        ToTensorFloat(),
     ])
     test_tf = transforms.Compose([
         RescaleT(args.rescale),
-        ToTensorLab(flag=0),
+        ToTensorFloat(),
     ])
 
     train_set = IRSTDSalDataset(root, train_names, transform=train_tf)
