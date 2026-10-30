@@ -1,0 +1,29 @@
+# 复制为 model_paths.yaml 后按本机路径修改
+# 教师（完整 DNANet）与学生（剪枝蒸馏）权重示例
+
+teacher:
+  # 示例：NUAA 教师
+  ckpt: ../Infrared-Small-Target-Detection-master/result/NUAA-SIRST_DNANet_14_10_2026_*/mIoU____DNANet_NUAA-SIRST_epoch.pth.tar
+  note: 用实际目录替换 *
+
+student:
+  # compress_runs 全量蒸馏最优学生（按数据集改）
+  ckpt: ../Infrared-Small-Target-Detection-master/compress_runs/full_*/student_best.pth.tar
+  # 若 ckpt 内无 nb_filter，可手动写:
+  # nb_filter: "13,22,38,64,102"
+
+export:
+  input_size: 256
+  in_channels: 3
+  opset: 11
+
+rknn:
+  target: rk3588
+  quantize: false   # true 时需准备 calib_list.txt
+  mean: [0.0, 0.0, 0.0]
+  std: [255.0, 255.0, 255.0]
+
+bench:
+  warmup: 30
+  iters: 200
+  core_mask: 7      # 7=NPU 三核

@@ -1,0 +1,5 @@
+# INT8 量化校准图列表：每行一张图的绝对/相对路径
+# 建议从验证集抽 50~200 张，分辨率与 export 一致（默认 256）
+# 复制为 calib_list.txt 后填写真实路径，例如:
+# ../RDANet-main/datasets/NUAA-SIRST/images/000001.png
+# ../RDANet-main/datasets/NUAA-SIRST/images/000002.png
