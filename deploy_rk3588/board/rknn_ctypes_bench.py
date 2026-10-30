@@ -2,6 +2,8 @@
 """
 RK3588 板端测速（仅标准库 + /usr/lib/librknnrt.so，无需 pip / rknnlite / numpy）。
 
+对齐 rknn-toolkit2 / librknnrt 2.x 的 rknn_api.h 结构体布局。
+
 用法（板上）:
   python3 rknn_ctypes_bench.py --rknn student.rknn --warmup 30 --iters 200
   python3 rknn_ctypes_bench.py --rknn student.rknn --csv bench.csv
@@ -13,16 +15,14 @@ import argparse
 import csv
 import ctypes
 import os
-import struct
-import sys
 import time
 from datetime import datetime
 
 LIB_PATH = "/usr/lib/librknnrt.so"
 
-RKNN_TENSOR_UINT8 = 3
 RKNN_TENSOR_FLOAT32 = 0
 RKNN_TENSOR_FLOAT16 = 1
+RKNN_TENSOR_UINT8 = 3
 RKNN_TENSOR_NHWC = 1
 RKNN_TENSOR_NCHW = 0
 
@@ -31,8 +31,16 @@ RKNN_QUERY_INPUT_ATTR = 1
 RKNN_QUERY_OUTPUT_ATTR = 2
 RKNN_QUERY_SDK_VERSION = 5
 
-# core mask（部分驱动在 rknn_init flag 里体现；此处先用默认 0，兼容性最好）
 RKNN_FLAG_PRIOR_HIGH = 0
+
+# rknn_core_mask（RK3588 多核）
+RKNN_NPU_CORE_AUTO = 0
+RKNN_NPU_CORE_0 = 1
+RKNN_NPU_CORE_1 = 2
+RKNN_NPU_CORE_2 = 4
+RKNN_NPU_CORE_0_1 = 3
+RKNN_NPU_CORE_0_1_2 = 7
+RKNN_NPU_CORE_ALL = 0xffff
 
 
 class RKNNIONum(ctypes.Structure):
@@ -40,6 +48,7 @@ class RKNNIONum(ctypes.Structure):
 
 
 class RKNNTensorAttr(ctypes.Structure):
+    # 与 rknn_api.h 中 rknn_tensor_attr 一致；ctypes 默认对齐会在 int8 后补齐
     _fields_ = [
         ("index", ctypes.c_uint32),
         ("n_dims", ctypes.c_uint32),
@@ -68,13 +77,15 @@ class RKNNSdkVersion(ctypes.Structure):
 
 
 class RKNNInput(ctypes.Structure):
+    """注意: type/fmt 是 enum(=int)，不是 uint8。旧脚本写成 uint8 会导致 inputs_set 错乱。"""
+
     _fields_ = [
         ("index", ctypes.c_uint32),
         ("buf", ctypes.c_void_p),
         ("size", ctypes.c_uint32),
         ("pass_through", ctypes.c_uint8),
-        ("type", ctypes.c_uint8),
-        ("fmt", ctypes.c_uint8),
+        ("type", ctypes.c_int),
+        ("fmt", ctypes.c_int),
     ]
 
 
@@ -171,29 +182,31 @@ def bind_lib(lib):
         ctypes.POINTER(RKNNOutput),
     ]
     lib.rknn_outputs_release.restype = ctypes.c_int
+    if hasattr(lib, "rknn_set_core_mask"):
+        lib.rknn_set_core_mask.argtypes = [ctypes.c_uint64, ctypes.c_int]
+        lib.rknn_set_core_mask.restype = ctypes.c_int
 
 
-def make_input_buffer(in_attr, fill="random"):
-    """按模型输入 attr 构造 buffer；默认随机，测速足够。"""
-    n = int(in_attr.n_elems)
-    size = int(in_attr.size)
-    t = int(in_attr.type)
-    # type: 0=fp32, 1=fp16, 2=int8, 3=uint8, ...
-    if t == RKNN_TENSOR_UINT8 or size == n:
-        if fill == "ones":
-            raw = bytes([1]) * n
-        else:
-            # 简单伪随机，避免依赖 random 模块大开销也可；用 deterministic pattern
-            raw = bytes((i * 37 + 11) & 0xFF for i in range(n))
-        return raw, RKNN_TENSOR_UINT8, 0  # pass_through=0 让 runtime 做必要转换
-    if t == RKNN_TENSOR_FLOAT16 or size == n * 2:
-        vals = [1.0] * n
-        raw = struct.pack("<%de" % n, *vals)
-        return raw, RKNN_TENSOR_FLOAT16, 1
-    # fallback float32
-    vals = [1.0] * n
-    raw = struct.pack("<%df" % n, *vals)
-    return raw, RKNN_TENSOR_FLOAT32, 0
+def make_uint8_nhwc(dims):
+    """
+    官方 demo 常用路径: 喂 NHWC uint8，pass_through=0，由 runtime 转成模型内部类型。
+    dims 一般为 [N,H,W,C] 或 [N,C,H,W]。
+    """
+    if len(dims) != 4:
+        raise SystemExit("unexpected dims: %s" % dims)
+    # 启发式: 若 dims[1] 很小(<=4) 且 dims[-1] 较大 -> NCHW，否则按 NHWC
+    if dims[1] <= 4 and dims[-1] > 4:
+        n, c, h, w = dims
+        n_pix = n * h * w * c
+        fmt = RKNN_TENSOR_NHWC  # 仍喂 NHWC，让 runtime 转换
+        # 构造 NHWC 布局
+        raw = bytes((i * 37 + 11) & 0xFF for i in range(n_pix))
+    else:
+        n, h, w, c = dims
+        n_pix = n * h * w * c
+        fmt = RKNN_TENSOR_NHWC
+        raw = bytes((i * 37 + 11) & 0xFF for i in range(n_pix))
+    return raw, RKNN_TENSOR_UINT8, 0, fmt
 
 
 def main():
@@ -203,12 +216,20 @@ def main():
     p.add_argument("--iters", type=int, default=200)
     p.add_argument("--csv", default="bench_result.csv")
     p.add_argument("--lib", default=LIB_PATH)
+    p.add_argument(
+        "--core_mask",
+        type=int,
+        default=RKNN_NPU_CORE_0_1_2,
+        help="NPU core mask: 1/2/4 单核, 7=三核, 0=auto",
+    )
     args = p.parse_args()
 
     if not os.path.isfile(args.rknn):
         raise SystemExit("missing rknn: %s" % args.rknn)
     if not os.path.isfile(args.lib):
         raise SystemExit("missing runtime: %s" % args.lib)
+
+    print("sizeof RKNNInput=", ctypes.sizeof(RKNNInput), "RKNNTensorAttr=", ctypes.sizeof(RKNNTensorAttr))
 
     lib = ctypes.CDLL(args.lib)
     bind_lib(lib)
@@ -217,6 +238,12 @@ def main():
     path = ctypes.c_char_p(os.path.abspath(args.rknn).encode("utf-8"))
     check(lib.rknn_init(ctypes.byref(ctx), path, 0, RKNN_FLAG_PRIOR_HIGH, None), "rknn_init")
 
+    if hasattr(lib, "rknn_set_core_mask"):
+        ret = lib.rknn_set_core_mask(ctx.value, int(args.core_mask))
+        print("core_mask:", args.core_mask, "ret=", ret)
+        if ret != 0:
+            print("[warn] rknn_set_core_mask failed, continue with default cores")
+
     version = RKNNSdkVersion()
     check(
         lib.rknn_query(ctx.value, RKNN_QUERY_SDK_VERSION, ctypes.byref(version), ctypes.sizeof(version)),
@@ -224,6 +251,8 @@ def main():
     )
     print("api:", c_string(version.api_version))
     print("drv:", c_string(version.drv_version))
+    if c_string(version.drv_version).startswith("0.7"):
+        print("[warn] NPU driver 较旧(0.7.x)，runtime 2.5 官方常建议 >=0.8.8；若仍失败需升级板端固件。")
 
     io_num = RKNNIONum()
     check(
@@ -250,27 +279,36 @@ def main():
         in_attr.fmt,
         "size=",
         in_attr.size,
+        "n_elems=",
+        in_attr.n_elems,
+        "size_with_stride=",
+        in_attr.size_with_stride,
     )
 
-    raw, dtype, pass_through = make_input_buffer(in_attr)
+    raw, dtype, pass_through, fmt = make_uint8_nhwc(dims)
     buf = ctypes.create_string_buffer(raw)
-    inp = RKNNInput()
-    inp.index = 0
-    inp.buf = ctypes.cast(buf, ctypes.c_void_p)
-    inp.size = len(raw)
-    inp.pass_through = pass_through
-    inp.type = dtype
-    inp.fmt = in_attr.fmt if in_attr.fmt in (0, 1) else RKNN_TENSOR_NHWC
+
+    inputs = (RKNNInput * 1)()
+    inputs[0].index = 0
+    inputs[0].buf = ctypes.cast(buf, ctypes.c_void_p)
+    inputs[0].size = len(raw)
+    inputs[0].pass_through = pass_through
+    inputs[0].type = dtype
+    inputs[0].fmt = fmt
+    print(
+        "feed: size=%d type=%d(fmt uint8) fmt=%d(NHWC) pass_through=%d"
+        % (inputs[0].size, inputs[0].type, inputs[0].fmt, inputs[0].pass_through)
+    )
 
     def one_run():
-        check(lib.rknn_inputs_set(ctx.value, 1, ctypes.byref(inp)), "inputs_set")
+        check(lib.rknn_inputs_set(ctx.value, 1, inputs), "inputs_set")
         check(lib.rknn_run(ctx.value, None), "run")
-        out = RKNNOutput()
-        out.want_float = 1
-        out.is_prealloc = 0
-        out.index = 0
-        check(lib.rknn_outputs_get(ctx.value, 1, ctypes.byref(out), None), "outputs_get")
-        lib.rknn_outputs_release(ctx.value, 1, ctypes.byref(out))
+        outs = (RKNNOutput * 1)()
+        outs[0].want_float = 1
+        outs[0].is_prealloc = 0
+        outs[0].index = 0
+        check(lib.rknn_outputs_get(ctx.value, 1, outs, None), "outputs_get")
+        lib.rknn_outputs_release(ctx.value, 1, outs)
 
     print("warmup:", args.warmup)
     for _ in range(args.warmup):
@@ -296,6 +334,7 @@ def main():
         "rknn": os.path.abspath(args.rknn),
         "rknn_mb": round(os.path.getsize(args.rknn) / 1024.0 / 1024.0, 3),
         "input_dims": str(dims),
+        "core_mask": args.core_mask,
         "warmup": args.warmup,
         "iters": args.iters,
         "latency_mean_ms": round(mean, 3),
@@ -328,7 +367,6 @@ def main():
         w.writerow(summary)
     print("[save]", os.path.abspath(args.csv))
 
-    # latency 明细
     detail = os.path.splitext(args.csv)[0] + "_latencies.txt"
     with open(detail, "w") as f:
         for x in lat:
